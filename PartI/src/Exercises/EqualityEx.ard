@@ -10,22 +10,27 @@
 -- The function 'repl' says that if two types are equal then there exists a function between them.
 
 -- Define 'repl' via 'transport'.
-\func repl {A B : \Type} (p : A = B) (a : A) : B => {?}
+\func repl {A B : \Type} (p : A = B) (a : A) : B =>
+  transport (\lam AB => AB) p a
 
 -- Define 'transport' via 'repl' and 'pmap'.
-\func transport' {A : \Type} (B : A -> \Type) {a a' : A} (p : a = a') (b : B a) : B a' => {?}
+\func transport' {A : \Type} (B : A -> \Type) {a a' : A} (p : a = a') (b : B a) : B a' =>
+  repl (pmap B p) b
 
 -- 3. Prove that left = right without using 'transport' or 'coe'.
 
-\func left=right : left = right => {?}
+\func left=right : left = right =>
+  path (\lam lr => lr)
 
 -- 4. Prove that a = a' and b = b' implies (a,b) = (a',b') without using 'transport'.
 
-\func pairEq {A B : \Type} {a a' : A} {b b' : B} (p : a = a') (q : b = b') : (a,b) = (a',b') => {?}
+\func pairEq {A B : \Type} {a a' : A} {b b' : B} (p : a = a') (q : b = b') : (a,b) = (a',b') =>
+  pmap2 (\lam a b => (a, b)) p q
 
 -- 5. Prove that p = p' implies p.1 = p'.1 without using 'transport'.
 
-\func projEq {A : \Type} (B : A -> \Type) {p p' : \Sigma (x : A) (B x)} (t : p = p') : p.1 = p'.1 => {?}
+\func projEq {A : \Type} (B : A -> \Type) {p p' : \Sigma (x : A) (B x)} (t : p = p') : p.1 = p'.1 =>
+  pmap (\lam t => t.1) t
 
 -- 6. Prove that (\lam x => not (not x)) = (\lam x => x).
 
@@ -33,11 +38,30 @@
   | true => false
   | false => true
 
-\func notNotId : (\lam x => not (not x)) = (\lam x => x) => {?}
+\func notNotId : (\lam x => not (not x)) = (\lam x => x) =>
+  {-funExt (\lam _ => Bool) (\lam x => \case x \with {
+    | true => idp
+    | false => idp
+  })-}
+  funExt (\lam _ => Bool) nnx=x
+  \where
+    \func nnx=x (x : Bool) : not (not x) = x
+      | true => idp
+      | false => idp
 
 -- 7. Define factorial via Nat-rec (i.e., without recursion and pattern matching).
 
+\func factorial (x : Nat) : Nat =>
+  Nat-rec Nat 1 (\lam x p => x * p) x
+
 -- 8. Prove associativity of Nat.+ via Nat-elim (i.e., without recursion and pattern matching).
+
+\func Nat-+-assoc (x y z : Nat) : (x Nat.+ y) Nat.+ z = x Nat.+ (y Nat.+ z) =>
+  Nat-elim
+      (\lam x => (x Nat.+ y) Nat.+ z = x Nat.+ (y Nat.+ z))
+      idp
+      (\lam _ p => pmap suc p)
+      x
 
 -- 9. Define recursor and eliminator for D.
 
@@ -46,23 +70,65 @@
   | con2 D D
   | con3 (Nat -> D)
 
+\func D-elim (P : D -> \Type)
+             (case1 : \Pi (n : Nat) -> P (con1 n))
+             (case2 : \Pi (d1 d2 : D) (P d1) (P d2) -> P (con2 d1 d2))
+             (case3 : \Pi (n->d : Nat -> D) (\Pi (n : Nat) -> P (n->d n)) -> P (con3 n->d))
+             (x : D) : P x \elim x
+  | con1 n => case1 n
+  | con2 d1 d2 => case2 d1 d2 (D-elim P case1 case2 case3 d1) (D-elim P case1 case2 case3 d2)
+  | con3 n->d => case3 n->d (\lam n => D-elim P case1 case2 case3 (n->d n))
+-- How to use \let or \where here?
+-- D-elim-helper => D-elim P case1 case2 case3
+
+\func D-rec (P : \Type)
+            (case1 : Nat -> P)
+            (case2 : D -> D -> P -> P -> P)
+            (case3 : (Nat -> D) -> (Nat -> P) -> P)
+            (x : D) : P =>
+  D-elim (\lam _ => P) case1 case2 case3 x
+
+\func D-rec' (P : \Type) :
+  (Nat -> P) ->
+  (D -> D -> P -> P -> P) ->
+  ((Nat -> D) -> (Nat -> P) -> P) ->
+  D -> P =>
+  D-elim (\lam _ => P)
+
 -- 10. Define recursor and eliminator for List.
 
 \data List (A : \Type) | nil | cons A (List A)
+
+\func List-elim {A : \Type} (P : List A -> \Type)
+                (nil-case : P nil)
+                (cons-case : \Pi (a : A) (l : List A) (P l) -> P (cons a l))
+                (x : List A) : P x \elim x
+  | nil => nil-case
+  | cons a l => cons-case a l (List-elim P nil-case cons-case l)
 
 -- 11. We defined transport via coe.
 --     Define a special case of coe via transport.
 --     Is it possible to define transport via coe0?
 
-\func coe0 (A : I -> \Type) (a : A left) : A right => {?}
+\func coe0 (A : I -> \Type) (a : A left) : A right =>
+  transport A left=right a
+
+\func transport'' {A : \Type} (B : A -> \Type) {a a' : A} (p : a = a') (b : B a) : B a' =>
+  coe0 (\lam i => B (p @ i)) b
 
 -- 12. Define a function B right -> B left.
 
-\func Itr' {B : I -> \Type} (b : B right) : B left => {?}
+\func Itr' {B : I -> \Type} (b : B right) : B left =>
+  transport B (inv left=right) b
+  -- Can this be simplified?
 
 -- 13. Prove that 0 does not equal to suc x.
 
-\func zero/=suc (x : Nat) (p : 0 = suc x) : Empty => {?}
+\func zero/=suc (x : Nat) (p : 0 = suc x) : Empty =>
+  transport S p unit
+  \where \func S (n : Nat) : \Type
+    | zero => Unit
+    | suc _ => Empty
 
 -- 14. Prove that fac does not equal to suc.
 
@@ -72,4 +138,8 @@
   | 0 => 1
   | suc n => suc n * fac n
 
-\func fac/=suc (p : fac = suc) : Empty => {?}
+\func fac/=suc (p : fac = suc) : Empty =>
+  zero/=suc 0 (pmap (\lam f => pred (f 1)) p)
+  \where \func pred (n : Nat) : Nat
+    | zero => zero
+    | suc n => n
