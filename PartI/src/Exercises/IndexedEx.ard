@@ -4,52 +4,125 @@
 --    Note that it is impossible to define such a function without restrictions on n sice n can be greater than the size of the list.
 --    Therefore the function should also take a proof that n is in the right range: T (n < length xs).
 
-\func lookup => {?}
+\func length {A : \Type} (xs : List A) : Nat
+  | nil => zero
+  | cons _ xs => suc (length xs)
+
+\func lookup {A : \Type} (xs : List A) (n : Nat) (p : T (n < length xs)) : A
+  | nil, zero, ()
+  | nil, suc _, ()
+  | cons x xs, zero, _ => x
+  | cons x xs, suc n, p => lookup xs n p
 
 -- 2. Implement function replicate for 'vec' and 'Vec' (this function creates the list of a given length filled with a
 -- given element).
 
+\func replicate-vec {A : \Type} {n : Nat} (xs : vec A n) : List A \elim n, xs
+  | 0, () => nil
+  | suc _, (x, xs) => cons x (replicate-vec xs)
+
+\func replicate-Vec {A :\Type} {n : Nat} (xs : Vec A n) : List A \elim n, xs
+  | 0, fnil => nil
+  | suc _, fcons x xs => cons x (replicate-Vec xs)
+
 -- 3. Implement function 'map' for 'vec' and 'Vec'.
+
+\func map-vec {A B : \Type} (f : A -> B) {n : Nat} (xs : vec A n) : vec B n \elim n, xs
+  | 0, () => ()
+  | suc _, (x, xs) => (f x, map-vec f xs)
+
+\func map-Vec {A B : \Type} (f : A -> B) {n : Nat} (xs : Vec A n) : Vec B n \elim n, xs
+  | 0, fnil => fnil
+  | suc _, fcons x xs => fcons (f x) (map-Vec f xs)
 
 -- 4. Implement function 'zipWith' for 'vec' and 'Vec'.
 --    The function must take lists of equal lengths.
 
+\func zipWith-vec {A B : \Type} {n : Nat} (xs : vec A n) (ys : vec B n) : vec (\Sigma A B) n \elim n, xs, ys
+  | 0, (), () => ()
+  | suc _, (x, xs), (y, ys) => ((x, y), zipWith-vec xs ys)
+
+\func zipWith-Vec {A B : \Type} {n : Nat} (xs : Vec A n) (ys : Vec B n) : Vec (\Sigma A B) n \elim n, xs, ys
+  | 0, fnil, fnil => fnil
+  | suc _, fcons x xs, fcons y ys => fcons (x, y) (zipWith-Vec xs ys)
+
 -- 5. Functions Fin n -> A correspond to lists of length n with elements in A.
 --    Implement the function that converts an element of Fin n -> A to element of Vec A n.
 
-\func funToVec {A : \Type} {n : Nat} (f : Fin n -> A) : Vec A n => {?}
+\func funToVec {A : \Type} {n : Nat} (f : Fin n -> A) : Vec A n \elim n
+  | 0 => fnil
+  | suc _ => fcons (f fzero) (funToVec (\lam fin => f (fsuc fin){-f o fsuc-}))
 
 -- 6. Define the type of matrices and a number of functions for them:
 
-\func Mat (A : \Type) (n m : Nat) : \Type => {?}
+\func Mat (A : \Type) (m n : Nat) : \Type => Vec (Vec A n) m
+
+\func lookup-Mat {A : \Type} {m n : Nat} (M : Mat A m n) (i : Fin m) (j : Fin n) : A =>
+  lookup-Vec (lookup-Vec M i) j
+
+\func funToMat {A : \Type} {m n : Nat} (f : Fin m -> Fin n -> A) : Mat A m n =>
+  funToVec (\lam i => funToVec (\lam j => f i j))
 
 -- diagonal matrix with elements e on the diagonal and z at all other positions.
 
-\func diag {A : \Type} (z e : A) (n : Nat) : Mat A n n => {?}
+\func \infix 3 == {n : Nat} (f1 f2 : Fin n) : Bool
+  | {suc n}, fzero, fzero => true
+  | {suc n}, fsuc f1, fsuc f2 => f1 == f2
+  | {suc n}, fzero, fsuc _ => false
+  | {suc n}, fsuc _, fzero => false
+
+\func diag {A : \Type} (z e : A) (n : Nat) : Mat A n n =>
+  funToMat (\lam i j => if (i == j) e z)
 
 -- transposition
 
-\func transpose {A : \Type} {n m : Nat} (M : Mat A n m) : Mat A m n => {?}
+\import Indexed (lookup \as lookup-Vec)
+
+\func transpose {A : \Type} {m n : Nat} (M : Mat A m n) : Mat A n m =>
+  funToMat (\lam i j => lookup-Mat M j i)
 
 -- addition
 
-\func matAdd {A : \Type} (add : A -> A -> A) (n m : Nat) (M N : Mat A n m) : Mat A n m => {?}
+\func matAdd {A : \Type} (add : A -> A -> A) (n m : Nat) (M N : Mat A n m) : Mat A n m =>
+  funToMat (\lam i j => lookup-Mat M i j `add` lookup-Mat N i j)
 
 -- multiplication
 
 -- z is neutral under addition.
-\func matMul {A : \Type} (z : A) (add mul : A -> A -> A) (n m k : Nat) (M : Mat A n m) (N : Mat A m k) : Mat A n k => {?}
+
+\func foldr {A B : \Type} (z : B) (op : A -> B -> B) {n : Nat} (xs : Vec A n) : B \elim n, xs
+  | 0, fnil => z
+  | suc n, fcons x xs => x `op` foldr z op xs
+
+\func matMul {A : \Type} (z : A) (add mul : A -> A -> A) (n m k : Nat) (M : Mat A n m) (N : Mat A m k) : Mat A n k =>
+  funToMat (\lam i j => foldr z add (funToVec (\lam k => lookup-Mat M i k `mul` lookup-Mat N k j)))
 
 -- 7. Define the type CTree A n of (complete and full) binary trees of height precisely n, which store elements in internal nodes, but not in leaves.
 --    The height of a leaf is 0.
 
-\data CTree (A : \Type) (n : Nat)
+\data CTree (A : \Type) (n : Nat) \elim n
+  | 0 => cleaf
+  | suc n => cbranch (CTree A n) (CTree A n)
 
 -- 8. Define the type Tree A n of binary trees of height at most n, which store elements in internal nodes, but not in leaves.
 --    The height of a leaf is 0.
 
-\data Tree (A : \Type) (n : Nat)
+\func Tree (A : \Type) (n : Nat) => Maybe (Branch A n)
+
+\data Branch (A : \Type) (n : Nat) \elim n
+  | suc n => branch (Maybe (Branch A n)) (Maybe (Branch A n))
+
+-- \func leaf {A : \Type} {n : Nat} : Tree A n => nothing
 
 -- Define the function that computes the height of a tree.
 
-\func height {A : \Type} (n : Nat) (t : Tree A n) : Fin (suc n) => {?}
+\func max {n : Nat} (x y : Fin n) : Fin n
+  | {suc n}, fzero, fzero => fzero
+  | {suc n}, fzero, fsuc y => fsuc y
+  | {suc n}, fsuc x, fzero => fsuc x
+  | {suc n}, fsuc x, fsuc y => fsuc (max x y)
+
+\func height {A : \Type} (n : Nat) (t : Tree A n) : Fin (suc n) \elim n, t
+  | _, nothing => fzero
+  | 0, just ()
+  | suc n, just (branch t1 t2) => fsuc (max (height n t1) (height n t2))
