@@ -56,9 +56,11 @@
 
 -- 8. Prove associativity of Nat.+ via Nat-elim (i.e., without recursion and pattern matching).
 
-\func Nat-+-assoc (x y z : Nat) : (x Nat.+ y) Nat.+ z = x Nat.+ (y Nat.+ z) =>
+\open Nat (+)
+
+\func Nat-+-assoc (x y z : Nat) : (x + y) + z = x + (y + z) =>
   Nat-elim
-      (\lam x => (x Nat.+ y) Nat.+ z = x Nat.+ (y Nat.+ z))
+      (\lam x => (x + y) + z = x + (y + z))
       idp
       (\lam _ p => pmap suc p)
       x
