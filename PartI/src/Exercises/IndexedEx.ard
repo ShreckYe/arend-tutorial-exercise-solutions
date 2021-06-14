@@ -107,10 +107,9 @@
 -- 8. Define the type Tree A n of binary trees of height at most n, which store elements in internal nodes, but not in leaves.
 --    The height of a leaf is 0.
 
-\func Tree (A : \Type) (n : Nat) => Maybe (Branch A n)
-
-\data Branch (A : \Type) (n : Nat) \elim n
-  | suc n => branch (Maybe (Branch A n)) (Maybe (Branch A n))
+\data Tree (A : \Type) (n : Nat) \elim n
+  | _ => leaf
+  | suc n => branch (Tree A n) (Tree A n)
 
 -- \func leaf {A : \Type} {n : Nat} : Tree A n => nothing
 
@@ -123,6 +122,5 @@
   | {suc n}, fsuc x, fsuc y => fsuc (max x y)
 
 \func height {A : \Type} (n : Nat) (t : Tree A n) : Fin (suc n) \elim n, t
-  | _, nothing => fzero
-  | 0, just ()
-  | suc n, just (branch t1 t2) => fsuc (max (height n t1) (height n t2))
+  | _, leaf => fzero
+  | suc n, branch t1 t2 => fsuc (max (height n t1) (height n t2))
