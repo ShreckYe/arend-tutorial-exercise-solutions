@@ -7,18 +7,24 @@
 
 \func Jalt {A : \Type} (B : \Pi (a a' : A) -> a = a' -> \Type)
            (b : \Pi (a : A) -> B a a idp)
-           {a a' : A} (p : a = a') : B a a' p => {?}
+           {a a' : A} (p : a = a') : B a a' p =>
+  J (B a{-\lam x a=x => B a x a=x-}) (b a) p
 
 -- Define 'J' via 'Jalt'. You can use only 'Jalt', 'idp' and everything definable in terms of these constructs (but not pattern matching on 'idp').
 -- See the end of this file for a hint.
 
-\func transport' {A : \Type} (B : A -> \Type) {a a' : A} (p : a = a') (b : B a) : B a' => {?}
+\func transport' {A : \Type} (B : A -> \Type) {a a' : A} (p : a = a') (b : B a) : B a' =>
+  Jalt (\lam a x a=x => B a -> B x) (\lam _ => id) p b
+  \where
+    \func id {A : \Type} => \lam (x : A) => x
 
-\func sigma-contr {A : \Type} {a : A} (p : \Sigma (x : A) (a = x)) : (a,idp) = {\Sigma (x : A) (a = x)} p => {?}
+\func sigma-contr {A : \Type} {a : A} (p : \Sigma (x : A) (a = x)) : (a,idp) = {\Sigma (x : A) (a = x)} p =>
+  Jalt (\lam a x a=x => (a, idp) = {\Sigma (x : A) (a = x)} (x, a=x)) (\lam _ => idp) p.2
 
 \func J' {A : \Type} {a : A} (B : \Pi (a' : A) -> a = a' -> \Type)
          (b : B a idp)
-         {a' : A} (p : a = a') : B a' p => {?}
+         {a' : A} (p : a = a') : B a' p =>
+  transport' (\lam sp => B sp.1 sp.2) (sigma-contr (a', p)) b
 
 -- 2. Prove that 'vnil' is an identity for 'v++'.
 
