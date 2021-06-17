@@ -28,31 +28,67 @@
 
 -- 2. Prove that 'vnil' is an identity for 'v++'.
 
-\func vnil-rightId {A : \Type} {n : Nat} (xs : Vec A n) : transport (Vec A) (+-comm 0 n) (xs v++ vnil) = xs => {?}
+\func vnil-rightId {A : \Type} {n : Nat} (xs : Vec A n) : transport (Vec A) (+-comm 0 n) (xs v++ vnil) = xs \elim n, xs
+  | 0, vnil => idp
+  | suc n, vcons x xs => transport-vcons-comm (+-comm 0 n) x (xs v++ vnil) *> pmap (vcons x) (vnil-rightId xs)
+  \where
+    \func transport-vcons-comm {A : \Type} {n m : Nat} (p : n = m) (x : A) (xs : Vec A n)
+      : transport (Vec A) (pmap suc p) (vcons x xs) = vcons x (transport (Vec A) p xs)
+      | idp, _, _ => idp
 
 -- 3. Prove that all definitions of <= given in the module are equivalent.
+
+-- Skipped.
 
 -- 4. Define the membership predicate 'In' for lists.
 
 \data List (A : \Type) | nil | cons A (List A)
 
-\data In {A : \Type} (a : A) (xs : List A)
+\data In {A : \Type} (a : A) (xs : List A) \elim xs
+  | cons x _ => here (a = x)
+  | cons _ xs => there (a `In` xs)
 
 -- 5. Define reflexive and transitive closure of a relation.
 --    That is 'ReflTransClosure R' -- is the minimal reflexive and transitive relation containing R.
 
 \data ReflTransClosure {A : \Type} (R : A -> A -> \Type) (x y : A)
+  | refl (x = y)
+  | trans (z : A) (R x z) (ReflTransClosure R z y)
 
 -- 6. Prove that if 'R' is already reflexive and transitive then 'ReflTransClosure R' is equivalent to 'R'.
 
 \func \infix 4 <-> {A : \Type} (P Q : A -> A -> \Type) => \Pi (x y : A) -> \Sigma (P x y -> Q x y) (Q x y -> P x y)
 
-\func ReflTransClosure-lem {A : \Type} (R : A -> A -> \Type) (refl : \Pi (x : A) -> R x x) (trans : \Pi (x y z : A) -> R x y -> R y z -> R x z) : R <-> ReflTransClosure R => {?}
+\func ReflTransClosure-lem {A : \Type} (R : A -> A -> \Type) (refl : \Pi (x : A) -> R x x) (trans : \Pi (x y z : A) -> R x y -> R y z -> R x z) : R <-> ReflTransClosure R =>
+  \lam x y => (\lam rxy => ReflTransClosure.trans y rxy (ReflTransClosure.refl idp), cr->r R refl trans x y)
+  \where \func cr->r {A : \Type} (R : A -> A -> \Type) (refl : \Pi (x : A) -> R x x) (trans : \Pi (x y z : A) -> R x y -> R y z -> R x z) (x y : A) (crxy : ReflTransClosure R x y) : R x y \elim crxy
+    | ReflTransClosure.refl x=y => transport (R x) x=y (refl x)
+    | ReflTransClosure.trans z rxz crzy => trans x z y rxz (cr->r R refl trans z y crzy)
 
 -- 7. Define the predicate xs <= ys for lists, which says "the list xs is a sublist of ys".
 
+\data \infix 4 <= {A : \Type} (xs ys : List A) \with
+  | nil, _ => <=nil
+  | cons x xs, cons y ys => <=cons (x = y) (xs <= ys)
+  | xs, cons y ys => <=tail (xs <= ys)
+
 -- 8. Prove that 'filter xs <= xs' for any list xs.
 
+\data Bool | false | true
+
+\func filter {A : \Type} (p : A -> Bool) (xs : List A) : List A \elim xs
+  | nil => nil
+  | cons x xs => \case p x \with {
+    | true => cons x (filter p xs)
+    | false => filter p xs
+  }
+
+\func filter-xs<=xs {A : \Type} (p : A -> Bool) (xs : List A) : filter p xs <= xs \elim xs
+  | nil => <=nil
+  | cons x xs => \case p x \with {
+    | true => <=cons idp (filter-xs<=xs p xs)
+    | false => <=tail (filter-xs<=xs p xs)
+  }
 
 
 
