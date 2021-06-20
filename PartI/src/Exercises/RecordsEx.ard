@@ -55,9 +55,9 @@
   | \infixl 1 >>= {A B : \Type} (F A) (A -> F B) : F B
   --  | >> {A B : \Type} (F A) (F B) : (F B)
   | return {A : \Type} A : F A
-  | monad-left-id {A B : \Type} (a : A) (h : A -> F B) : (return a >>= h) = h a
+  | monad-left-id {A B : \Type} (a : A) (f : A -> F B) : (return a >>= f) = f a
   | monad-right-id {A : \Type} (m : F A) : (m >>= return) = m
-  | monad-assoc {A B C : \Type} (m : F A) (g : A -> F B) (h : B -> F C) : (m >>= g >>= h) = (m >>= (\lam x => g x >>= h))
+  | monad-assoc {A B C : \Type} (m : F A) (f : A -> F B) (g : B -> F C) : (m >>= f >>= g) = (m >>= (\lam x => f x >>= g))
 
 \data Maybe (A : \Type) | nothing | just A
 
@@ -66,8 +66,14 @@
     | nothing => nothing
     | just a => just (f a)
   }
-  | fmap-id => {?}
-  | fmap-comp => {?}
+  | fmap-id {A : \Type} (y : Maybe A) : fmap (\lam (x : A) => x) y = y \with {
+    | nothing => idp
+    | just a => idp
+  }
+  | fmap-comp {A B C : \Type} (f : A -> B) (g : B -> C) (y : Maybe A) : fmap (\lam x => g (f x)) y = fmap g (fmap f y) \elim y {
+    | nothing => idp
+    | just a => idp
+  }
   | >>= {A B : \Type} (ma : Maybe A) (f : A -> Maybe B) : Maybe B => \case ma \with {
     | nothing => nothing
     | just a => \case f a \with {
@@ -75,8 +81,14 @@
       | just b => just b
     }
   }
-  | return => just
+  | return : \Pi {A : \Type} A -> Maybe A => just
   | monad-left-id => {?}
+{-
+  | monad-left-id {A B : \Type} (a : A) (f : A -> Maybe B) : (return a >>= f) = f a => \case f a \with {
+    | nothing => idp
+    | just a1 => idp
+  }
+-}
   | monad-right-id => {?}
   | monad-assoc => {?}
 
@@ -85,5 +97,46 @@
 \record State (S A : \Type)
   | state : S -> \Sigma S A
 
+\instance StateMonad (S : \Type) : Monad (State S)
+  | fmap f (sa : State S A) => \new State {
+    | state s => \let (s', a) => sa.state s \in (s', f a)
+  }
+  | fmap-id y => idp
+  | fmap-comp f g y => idp
+  | >>= (sa : State S A) f => \new State {
+    | state s => \let | (s', a) => sa.state s
+                      | sb : State S B => f a
+                 \in sb.state s'
+  }
+  | return a => \new State { | state s => (s, a) }
+  | monad-left-id => {?}
+  | monad-right-id => {?}
+  | monad-assoc => {?}
+
 \data State' (S A : \Type)
   | state' (S -> \Sigma S A)
+
+\instance State'Monad (S : \Type) : Monad (State' S)
+  | fmap {A} {B} f (sa : State' S A) : State' S B \elim sa {
+    | state' sf => state' (\lam s => \let (s', a) => sf s \in (s', f a))
+  }
+  | fmap-id {A} (y : State' S A) : fmap (\lam (x : A) => x) y = y \with {
+    | state' sf => idp
+  }
+  | fmap-comp {A B C : \Type} (f : A -> B) (g : B -> C) (y : State' S A) : fmap (\lam x => g (f x)) y = fmap g (fmap f y) \elim y {
+    | state' sf => idp
+  }
+  | >>= {A} {B} (sa : State' S A) (f : A -> State' S B) : State' S B \elim sa {
+    | state' sfa => state' (
+      \lam s =>
+          \let | (s', a) => sfa s
+               | sb => f a
+          \in \case f a \with {
+            | state' sfb => sfb s'
+          }
+    )
+  }
+  | return a => state' (\lam s => (s, a))
+  | monad-left-id => {?}
+  | monad-right-id => {?}
+  | monad-assoc => {?}
