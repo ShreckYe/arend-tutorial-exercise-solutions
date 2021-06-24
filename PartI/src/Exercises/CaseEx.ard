@@ -3,16 +3,54 @@
 -- 1. Implement any sorting algorithm using \case for pattern matching on the result of comparison of elements
 -- of a list.
 
+-- Adapted from sort in Indexed.ard
+\func sort' {A : \Type} (less : A -> A -> Bool) (xs : List A) : List A \elim xs
+  | nil => nil
+  | cons x xs => insert less x (sort' less xs)
+  \where
+    \func insert {A : \Type} (less : A -> A -> Bool) (x : A) (xs : List A) : List A \elim xs
+      | nil => cons x nil
+      | cons x' xs => \case (less x x') \with {
+        | false => (cons x' (insert less x xs))
+        | true => (cons x (cons x' xs))
+      }
+
 -- 2. Define 'filter' via 'if' not using \case.
 --    Prove the lemma 'filter-lem' for this version of 'filter'.
 
-\func filter' {A : \Type} (p : A -> Bool) (xs : List A) : List A => {?}
+\func if {A : \Type} (b : Bool) (t e : A) : A \elim b
+  | true => t
+  | false => e
 
-\func filter-lem {A : \Type} (p : A -> Bool) (xs : List A) : length (filter' p xs) <= length xs => {?}
+\func filter' {A : \Type} (p : A -> Bool) (xs : List A) : List A \elim xs
+  | nil => nil
+  | cons x xs => if (p x) (cons x (filter' p xs)) (filter' p xs)
+
+\func filter-lem {A : \Type} (p : A -> Bool) (xs : List A) : length (filter' p xs) <= length xs \elim xs
+  | nil => unit
+  | cons x xs => \case p x \as b \return length (if b (cons x (filter' p xs)) (filter' p xs)) <= length (cons x xs) \with {
+    | true => filter-lem p xs
+    | false => <=-helper (filter-lem p xs)
+  }
 
 -- 3. Prove that, for every function f : Bool -> Bool and every x : Bool, it is true that f (f (f x)) = f x.
 
-\func Bool-lem (f : Bool -> Bool) (x : Bool) : f (f (f x)) = f x => {?}
+\import Records (*>)
+
+\func Bool-lem (f : Bool -> Bool) (x : Bool) : f (f (f x)) = f x =>
+  \case f true \as ft, idp : f true = ft, f false \as ff, idp : f false = ff, \elim x \with {
+    -- x = b and f b = b
+    | _, _, false, q, false => pmap f (pmap f q *> q)
+    | true, p, _, _, true => pmap f (pmap f p *> p)
+
+    -- f true = f false or f true = not (f false)
+    | false, p, false, q, true => pmap f (pmap f p *> q) *> q *> inv p
+    | true, p, true, q, false => pmap f (pmap f q *> p) *> p *> inv q
+
+    -- f true != f false
+    | false, p, true, q, false => pmap f (pmap f q *> p)
+    | false, p, true, q, true => pmap f (pmap f p *> q)
+  }
 
 -- 4. Define the view, which represents a natural number as a pair of the quotient and the remainder of
 -- division by a positive 'm'. Implement the division function.
@@ -20,9 +58,50 @@
 \data ModView (m n : Nat)
   | quot-rem (q r : Nat) (t : T (r < m)) (p : n = q * m + r)
 
-\func mod-view (m n : Nat) (t : T (0 < m)) : ModView m n => {?}
+\import Basics (-)
 
-\func div (n m : Nat) (t : T (0 < m)) : Nat => {?}
+\func mod-view (m n : Nat) (t : T (0 < m)) : ModView m n =>
+  \case n < m \as b, idp : b = n < m \with {
+    | true, b=n<m => quot-rem 0 n (transport T b=n<m unit) (inv (pmap (\lam z => z + n) (z* m) *> z+ n))
+    | false, b=n<m => \case \elim m, t, \elim n, b=n<m \with {
+      | suc pm, unit, suc pn, b=n<m => \let m => suc pm | n => suc pn \in
+        \case mod-view m (n - m) unit \with {
+          | quot-rem q r t' p => quot-rem (suc q) r t' (p-helper n m q r b=n<m p)
+        }
+    }
+  }
+  \where{
+    \func z+ (n : Nat) : 0 + n = n
+      | 0 => idp
+      | suc n => pmap suc (z+ n)
+
+    \func z* (n : Nat) : 0 * n = 0
+      | 0 => idp
+      | suc n => z* n
+
+    \func p-helper (n m q r : Nat) (f=n<m : false = n < m) (p : n - m = q * m + r) : n = suc q * m + r \elim n, m
+      | n, 0 => inv (-z n) *> p
+      | suc n, suc m =>
+        pmap suc (p-helper n m q (q + r) f=n<m (p *> +-assoc (q * m) q r) *> inv (+-assoc (suc q * m) q r)) *>
+        s[x+y]=sx+y (suc q * m + q) r
+
+    \func -z (n : Nat) : n - 0 = n
+      | 0 => idp
+      | suc n => idp
+
+    \func +-assoc (x y z : Nat) : (x + y) + z = x + (y + z) \elim z
+      | 0 => idp
+      | suc z => pmap suc (+-assoc x y z)
+
+    \func s[x+y]=sx+y (x y : Nat) : suc (x + y) = suc x + y \elim y
+      | 0 => idp
+      | suc y => pmap suc (s[x+y]=sx+y x y)
+  }
+
+\func div (n m : Nat) (t : T (0 < m)) : Nat =>
+  \case mod-view m n t \with {
+    | quot-rem q _ _ _ => q
+  }
 
 -- 5. Prove that the predicate 'isEven' is decidable.
 
