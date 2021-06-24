@@ -61,16 +61,33 @@
 \import Basics (-)
 
 \func mod-view (m n : Nat) (t : T (0 < m)) : ModView m n =>
-  \case n < m \as b, idp : b = n < m \with {
-    | true, b=n<m => quot-rem 0 n (transport T b=n<m unit) (inv (pmap (\lam z => z + n) (z* m) *> z+ n))
-    | false, b=n<m => \case \elim m, t, \elim n, b=n<m \with {
-      | suc pm, unit, suc pn, b=n<m => \let m => suc pm | n => suc pn \in
-        \case mod-view m (n - m) unit \with {
-          | quot-rem q r t' p => quot-rem (suc q) r t' (p-helper n m q r b=n<m p)
-        }
-    }
-  }
+  mod-view' m n t n (n<=n n)
   \where{
+    \func mod-view' (m n : Nat) (t : T (0 < m)) (n-rec : Nat) (n<=nr : n <= n-rec) : ModView m n \elim n, n-rec
+      | 0, 0 => quot-rem 0 0 t (inv (z* m))
+      | n, suc pn-rec => \case n < m \as b, idp : b = n < m \with {
+        | true, t=n<m => quot-rem 0 n (transport T t=n<m unit) (inv (pmap (\lam z => z + n) (z* m) *> z+ n))
+        | false, f=n<m => \case \elim m, t, \elim n, f=n<m, n<=nr \with {
+          | suc pm, unit, suc pn, b=pn<pm, pn<=pnr => \let m => suc pm | n => suc pn \in
+            \case mod-view' m (n - m) unit pn-rec (<=-trans (n-m<=n pn pm) pn<=pnr) \with {
+              | quot-rem q r t' p => quot-rem (suc q) r t' (p-helper n m q r b=pn<pm p)
+            }
+        }
+      }
+
+    \func n<=n (n : Nat) : n <= n
+      | 0 => unit
+      | suc n => n<=n n
+
+    \func n-m<=n (x y : Nat) : x - y <= x
+      | 0, _ => unit
+      | suc x, 0 => n<=n (suc x)
+      | suc x, suc y => <=-helper (n-m<=n x y)
+
+    \func <=-trans {x y z : Nat} (p : x <= y) (q : y <= z) : x <= z \elim x, y, z, p, q
+      | 0, _, _, _, _ => unit
+      | suc x, suc y, suc z, p, q => <=-trans p q
+
     \func z+ (n : Nat) : 0 + n = n
       | 0 => idp
       | suc n => pmap suc (z+ n)
