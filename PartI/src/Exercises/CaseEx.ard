@@ -60,13 +60,33 @@
 
 \import Basics (-)
 
+\func z+ (n : Nat) : 0 + n = n
+  | 0 => idp
+  | suc n => pmap suc (z+ n)
+
+\func z* (n : Nat) : 0 * n = 0
+  | 0 => idp
+  | suc n => z* n
+
+\func -z (n : Nat) : n - 0 = n
+  | 0 => idp
+  | suc n => idp
+
+\func +-assoc (x y z : Nat) : (x + y) + z = x + (y + z) \elim z
+  | 0 => idp
+  | suc z => pmap suc (+-assoc x y z)
+
+\func s[x+y]=sx+y (x y : Nat) : suc (x + y) = suc x + y \elim y
+  | 0 => idp
+  | suc y => pmap suc (s[x+y]=sx+y x y)
+
 \func mod-view (m n : Nat) (t : T (0 < m)) : ModView m n =>
   mod-view' m n t n (n<=n n)
   \where{
     \func mod-view' (m n : Nat) (t : T (0 < m)) (n-rec : Nat) (n<=nr : n <= n-rec) : ModView m n \elim n, n-rec
       | 0, 0 => quot-rem 0 0 t (inv (z* m))
       | n, suc pn-rec => \case n < m \as b, idp : b = n < m \with {
-        | true, t=n<m => quot-rem 0 n (transport T t=n<m unit) (inv (pmap (\lam z => z + n) (z* m) *> z+ n))
+        | true, t=n<m => quot-rem 0 n (transport T t=n<m unit) (inv (pmap (\lam z*n|z => z*n|z + n) (z* m) *> z+ n))
         | false, f=n<m => \case \elim m, t, \elim n, f=n<m, n<=nr \with {
           | suc pm, unit, suc pn, b=pn<pm, pn<=pnr => \let m => suc pm | n => suc pn \in
             \case mod-view' m (n - m) unit pn-rec (<=-trans (n-m<=n pn pm) pn<=pnr) \with {
@@ -88,31 +108,11 @@
       | 0, _, _, _, _ => unit
       | suc x, suc y, suc z, p, q => <=-trans p q
 
-    \func z+ (n : Nat) : 0 + n = n
-      | 0 => idp
-      | suc n => pmap suc (z+ n)
-
-    \func z* (n : Nat) : 0 * n = 0
-      | 0 => idp
-      | suc n => z* n
-
     \func p-helper (n m q r : Nat) (f=n<m : false = n < m) (p : n - m = q * m + r) : n = suc q * m + r \elim n, m
       | n, 0 => inv (-z n) *> p
       | suc n, suc m =>
         pmap suc (p-helper n m q (q + r) f=n<m (p *> +-assoc (q * m) q r) *> inv (+-assoc (suc q * m) q r)) *>
         s[x+y]=sx+y (suc q * m + q) r
-
-    \func -z (n : Nat) : n - 0 = n
-      | 0 => idp
-      | suc n => idp
-
-    \func +-assoc (x y z : Nat) : (x + y) + z = x + (y + z) \elim z
-      | 0 => idp
-      | suc z => pmap suc (+-assoc x y z)
-
-    \func s[x+y]=sx+y (x y : Nat) : suc (x + y) = suc x + y \elim y
-      | 0 => idp
-      | suc y => pmap suc (s[x+y]=sx+y x y)
   }
 
 \func div (n m : Nat) (t : T (0 < m)) : Nat =>
@@ -124,12 +124,95 @@
 
 \func isEven (n : Nat) => \Sigma (k : Nat) (n = 2 * k)
 
-\func isEven-dec : DecPred isEven => {?}
+\func +-comm (n m : Nat) : n + m = m + n
+  | 0, 0 => idp
+  | suc n, 0 => pmap suc (+-comm n 0)
+  | 0, suc m => pmap suc (+-comm 0 m)
+  | suc n, suc m => pmap suc (+-comm (suc n) m *> pmap suc (inv (+-comm n m)) *> +-comm n (suc m))
+
+\func *-comm (n m : Nat) : n * m = m * n
+  | 0, 0 => idp
+  | 0, suc m => *-comm 0 m
+  | suc n, 0 => *-comm n 0
+  | suc n, suc m => pmap suc (
+    pmap (\lam sn*m|m*sn => sn*m|m*sn + n) (*-comm (suc n) m) *>
+    +-assoc (m * n) m n *>
+    pmap (\lam m+n|n+m => m * n + m+n|n+m) (+-comm m n) *>
+    inv (+-assoc (m * n) n m) *>
+    pmap (\lam m*n|n*m => m*n|n*m + n + m) (inv (*-comm n m)) *>
+    pmap (\lam n*sm|sm*n => n*sm|sm*n + m) (*-comm n (suc m))
+  )
+
+{-
+\func zero/=suc (x : Nat) (p : 0 = suc x) : Empty =>
+  transport S p unit
+  \where \func S (n : Nat) : \Type
+    | zero => Unit
+    | suc _ => Empty
+-}
+
+\func isEven-dec : DecPred isEven => \lam n =>
+    \case mod-view 2 n unit \with {
+      | quot-rem q r t p => \case \elim r, t, p \with {
+        | 0, unit, p => yes (q, p *> *-comm q 2)
+        | 1, unit, p => no (\lam ie-n => no-helper (inv (p *> pmap (\lam q*2|2*q => q*2|2*q + 1) (*-comm q 2)) *> ie-n.2))
+        | suc (suc r), t, _ => \case r < 0 \as b, n<0=f r : b = false, t : T b \with {
+          | false, _, ()
+        }
+      }
+    }
+  \where {
+    \func n<0=f (n : Nat) : n < 0 = false
+      | 0 => idp
+      | suc n => idp
+
+    {- more complicated
+        \func no-helper' {q k : Nat} (p : q * 2 + 1 = k * 2) : Empty \elim q, k, p
+          | 0, 0, ()
+          | 0, suc k, p => zero/=suc (k * 2) (sn=sm->n=m p *> inv (s[x+y]=sx+y (0 + k) k))
+          | suc q, suc k, p => no-helper' {q} {k} (s[x+y]=sx+y (0 + q) q *> sn=sm->n=m (sn=sm->n=m p *> inv (s[x+y]=sx+y (0 + k) k)))
+    -}
+
+    \func no-helper {q k : Nat} (p : 2 * q + 1 = 2 * k) : Empty \elim q, k, p
+      | 0, 0, ()
+      | suc q, suc k, p => no-helper (sn=sm->n=m (sn=sm->n=m p))
+
+    \func sn=sm->n=m {n m : Nat} (p : suc n = suc m) : n = m =>
+      pmap pred p
+    {-
+      pmap (\lam sn|sm => \case sn|sm \with {
+        | 0 => {?}
+        | suc n|m => n|m
+      }) p
+    -}
+  }
 
 -- 6. Prove that if equality of elements of a type 'A' is decidable, then eqiality of elements if 'List A' is also decidable.
 
+\import Exercises.EqualityEx (pmap2)
+
 \instance ListEq {A : \Type} (dec : Eq A) : Eq (List A)
-  | decideEq => {?}
+  | decideEq (xs ys : List A) : Decide (xs = ys) \with {
+    | nil, nil => yes idp
+    | nil, cons _ _ => no (\lam p => \case p \with {
+      | ()
+    })
+    | cons _ _, nil => no (\lam p => \case p \with {
+      | ()
+    })
+    | cons x xs, cons y ys => \case dec.decideEq x y, decideEq xs ys \with {
+      | yes x=y, yes xs=ys => yes (pmap2 cons x=y xs=ys)
+      | _, no xs!=ys => no (\lam cxxs=cyys => xs!=ys (pmap (\lam cxxs|cyys => \case cxxs|cyys \with {
+        | nil => {?}
+        | cons _ xs|ys => xs|ys
+      }) cxxs=cyys))
+      | no x!=y, _ => no (\lam cxxs=cyys => x!=y (pmap (\lam cxxs|cyys => \case cxxs|cyys \with {
+        | nil => {?}
+        | cons x|y _ => x|y
+      }) cxxs=cyys))
+    }
+  }
+
 
 -- 7. Prove that if equality of elements of a type 'A' is decidable, then every list of elements of 'A' is either empty,
 -- consists of repetitions of one element or there exist two different elements in 'A'.
@@ -143,11 +226,55 @@
   | repeated (n : Nat) (a : A) (p : xs = repeat n a)
   | A-is-not-trivial (a a' : A) (p : a = a' -> Empty)
 
-\func lemma {A : \Type} (xs : List A) {dec : DecEq A} : Result A xs => {?}
+\func lemma {A : \Type} (xs : List A) {dec : DecEq A} : Result A xs \elim xs
+  | nil => empty idp
+  | cons x xs => \case \elim xs, lemma xs {dec} \with {
+    | nil, empty p => repeated 1 x idp
+    | _, repeated n a p => \case dec x a \with {
+      | yes x=a => repeated (suc n) a (pmap (cons x) p *> pmap (\lam x|a => cons x|a (repeat n a)) x=a)
+      | no x=a->E => A-is-not-trivial x a x=a->E
+    }
+    | _, A-is-not-trivial a a' p => A-is-not-trivial a a' p
+
+    | cons x xs, empty p => absurd (transport (\lam cxxs|nil => \case cxxs|nil \with {
+      | cons _ _ => Unit
+      | nil => Empty
+    }) p unit)
+  }
+
 
 -- 8. Prove that the functions 'FromBoolToDec' and 'FromDecToBool' are inverse to each other.
 
-\func bdb {A : \Type} (p : A -> Bool) : FromDecToBool (FromBoolToDec p) = p => {?}
+\import Equality (funExt)
+
+\func bdb {A : \Type} (p : A -> Bool) : FromDecToBool (FromBoolToDec p) = p =>
+  funExt (\lam _ => Bool) (\lam a =>
+      \case p a \as b, idp : b = p a \return
+      FromDecToBool (\lam a => T b, \lam a => \case \elim b \return Decide (T b) \with {
+        | true => yes unit
+        | false => no (\lam x => x)
+      }) a = p a
+      \with {
+        | true, p => p
+        | false, p => p
+      })
+{-
+  funExt (\lam _ => Bool) (\lam a =>
+      \case p a \as b, idp : b = p a \return
+      (\case
+        \case \elim b \return Decide (T b) \with {
+          | true => yes unit
+          | false => no (\lam x => x)
+        } \with {
+        | yes _ => true
+        | no _ => false
+      }) = p a
+      \with {
+        | true, p => p
+        | false, p => p
+      })
+-}
+
 
 -- We cannot prove that 'FromBoolToDec (FromDecToBool P) = P', but we can prove a weaker statement:
 -- these predicates are logically equivalent.
@@ -155,4 +282,44 @@
 -- Equivalence of predicates
 \func \infix 4 <-> {A : \Type} (P Q : A -> \Type) => \Pi (x : A) -> \Sigma (P x -> Q x) (Q x -> P x)
 
-\func dbd {A : \Type} (P : \Sigma (P : A -> \Type) (DecPred P)) : (FromBoolToDec (FromDecToBool P)).1 <-> P.1 => {?}
+\func dbd {A : \Type} (P : \Sigma (P : A -> \Type) (DecPred P)) : (FromBoolToDec (FromDecToBool P)).1 <-> P.1 =>
+  \lam a => (
+    \lam dbdp1x => \case P.2 a \as d, dbdp1x : T (\case d \with {
+      | yes _ => true
+      | no _ => false
+    }) \with {
+      | yes p1x, _ => p1x
+      | no _, ()
+    },
+    \lam p1x => \case P.2 a \as d
+    \return T (\case \elim d \with {
+      | yes _ => true
+      | no _ => false
+    })
+    \with {
+      | yes p1x' => unit
+      | no p1x->E => absurd (p1x->E p1x)
+    }
+    {- failed example
+    \lam p1x => \case
+      P.2 a \as d,
+      \case (\case d \return Bool \with {
+        | yes _ => true
+        | no _ => false
+      }) \as b \return Decide (T b) \with {
+        | true => yes unit
+        | false => no (\lam x => x)
+      }
+    \return T (\case d \with {
+      | yes _ => true
+      | no _ => false
+    })
+    \with {
+      | yes p1x, yes dbdp1x => dbdp1x
+      | no p1x->E, no _ => absurd (p1x->E p1x)
+
+      | yes , no => {?}
+      | no , yes => {?}
+    }
+    -}
+  )
