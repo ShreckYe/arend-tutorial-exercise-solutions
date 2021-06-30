@@ -120,3 +120,82 @@
 --    * 'filter p xs' is a sublist of 'xs'
 --    * All elements of 'filter p xs' satisfy the predicate 'p'
 --    * Any sublist of 'xs' with this property is a sublist of 'filter p xs'
+
+\func filter {A : \Type} (p : A -> Bool) (xs : List A) : List A \elim xs
+  | nil => nil
+  | cons x xs => \case p x \with {
+    | false => filter p xs
+    | true => cons x (filter p xs)
+  }
+
+\data \infix 0 Sublist {A : \Type} (xs : List A) (ys : List A) \with
+  | nil, _ => nil-sublist
+  | xs, cons y ys => tail-sublist (Sublist xs ys)
+  | cons x xs, cons y ys => head-and-tail-sublist (x = y) (Sublist xs ys)
+
+\data All {A : \Type} (P : A -> \Type) (xs : List A) \with
+  | _, nil => nil-all
+  | P , cons x xs => cons-all (P x) (All P xs)
+
+\func FilterSpec (filter : \Pi {A : \Type} (A -> Bool) (List A) -> List A) =>
+  \Pi {A : \Type} (p : A -> Bool) (xs : List A) ->
+      \let | fpxs => filter p xs
+           | P => \lam x => T (p x)
+      \in \Sigma
+        (fpxs Sublist xs)
+        (All P fpxs)
+        (\Pi (ys : List A) (ys Sublist xs) (All P ys) -> ys Sublist fpxs)
+
+\func filter-spec : FilterSpec filter =>
+  \lam p xs => (spec-1 p xs, spec-2 p xs, spec-3 p xs)
+  \where {
+    \func spec-1 {A : \Type} (p : A -> Bool) (xs : List A) : filter p xs Sublist xs \elim xs
+      | nil => nil-sublist
+      | cons x xs => \case p x \as b \return
+      (\case b \with {
+        | false => filter p xs
+        | true => cons x (filter p xs)
+      }) Sublist (cons x xs)
+      \with {
+        | false => tail-sublist (spec-1 p xs)
+        | true => head-and-tail-sublist idp (spec-1 p xs)
+      }
+
+    \func spec-2 {A : \Type} (p : A -> Bool) (xs : List A) : All (\lam x => T (p x)) (filter p xs) \elim xs
+      | nil => nil-all
+      | cons x xs => \case p x \as b, idp : b = p x \return
+      All (\lam x => T (p x)) (\case b \with {
+        | false => filter p xs
+        | true => cons x (filter p xs)
+      })
+      \with {
+        | false, _ => spec-2 p xs
+        | true, p => cons-all (transport T p unit) (spec-2 p xs)
+      }
+
+    \func spec-3 {A : \Type} (p : A -> Bool) (xs : List A)
+                 (ys : List A) (ys-sublist-xs : ys Sublist xs) (all-p-ys : All (\lam x => T (p x)) ys) : ys Sublist (filter p xs)
+    \elim xs, ys, ys-sublist-xs, all-p-ys
+      | _, nil, _, _ => nil-sublist
+      | cons x xs, ys, tail-sublist ys-sublist-xs, all-p-ys =>
+        \let rec => spec-3 p xs ys ys-sublist-xs all-p-ys
+        \in \case p x \as b \return
+        ys Sublist (\case b \with {
+          | false => filter p xs
+          | true => cons x (filter p xs)
+        })
+        \with {
+          | false => rec
+          | true => tail-sublist rec
+        }
+      | cons x xs, cons y ys, head-and-tail-sublist idp ys-sublist-xs, cons-all py all-p-ys =>
+        \case p x \as b, py : T b \return
+        cons y ys Sublist (\case b \with {
+          | false => filter p xs
+          | true => cons x (filter p xs)
+        })
+        \with {
+          | false, ()
+          | true, t => head-and-tail-sublist idp (spec-3 p xs ys ys-sublist-xs all-p-ys)
+        }
+  }
