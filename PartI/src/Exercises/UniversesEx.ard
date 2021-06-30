@@ -5,15 +5,95 @@
 
 \func id'' {A : \Type} (a : A) => a
 
-\func idTest1 => id'' (id'' id)
-\func idTest2 => id'' Maybe
-\func idTest3 => id'' Functor
-\func idTest4 => id'' (Functor Maybe)
-\func idTest5 (f : \Pi {A B : \Set} -> (A -> B) -> Maybe A -> Maybe B) => id'' (Functor Maybe f)
+\func idTest1 : \Pi (A : \Type \lp) A -> A => id'' (id'' id)
+\func idTest2 : \Type \lp -> \Type \lp => id'' Maybe
+\func idTest3 : \Type (\suc \lp) => id'' Functor
+-- \func idTest3 : (\Type \lp -> \Type \lp) -> \Type (\suc \lp) => id'' Functor
+\func idTest4 : \Type (\suc \lp) => id'' (Functor Maybe)
+\func idTest5 (f : \Pi {A B : \Set} -> (A -> B) -> Maybe A -> Maybe B) : \Type \lp => id'' (Functor Maybe f)
+
+
+-- well-founded induction implemented referring to the Agda implementation
+-- see: https://stackoverflow.com/questions/19642921/assisting-agdas-termination-checker
+-- see: https://agda.github.io/agda-stdlib/Induction.WellFounded.html
+
+\data Acc {A : \Type} (< : A -> A -> \Type) (x : A)
+  | acc (rs : \Pi (y : A) -> y `<` x -> Acc < y)
+
+-- \func WF {A : \Type} (< : A -> A -> \Type) => \Pi (x : A) -> Acc < x
+
+\func wf-ind {A : \Type} {< : A -> A -> \Type}
+             (E : A -> \Type)
+             (r : \Pi (x : A) -> (\Pi (y : A) -> y `<` x -> E y) -> E x)
+             (x : A) (acc-x : Acc < x): E x \elim acc-x
+  | acc rs => r x (\lam y y<x => wf-ind E r y (rs y y<x))
+
+-- end of well-founded induction base definitions
+
+\func t< => \lam x y => T (x < y)
+
+\func absurd {A : \Type} (e : Empty) : A
+
+\func transport {A : \Type} (B : A -> \Type) {a a' : A} (p : a = a') (b : B a) : B a' =>
+  coe (\lam i => B (p @ i)) b right
+
+\import Equality (inv, pmap)
+\import Proofs (inl, inr, ||)
+
+\func wf-t< (x : Nat) : Acc t< x
+  | 0 => acc (\lam y t[y<0] => t[n<0]-elim t[y<0])
+  | suc x => acc (\lam y t[y<sx] => \let acc-x => wf-t< x \in \case t[y<sx]->y=x||t[y<x] t[y<sx] \with {
+    | inl y=x => transport (Acc t<) (inv y=x) acc-x
+    | inr t[y<x] => \case acc-x \with {
+      | acc rs => rs y t[y<x]
+    }
+  })
+  \where {
+    \func t[n<0]-elim {A : \Type} {n : Nat} (t : T (n < 0)) : A \elim n, t
+      | 0, ()
+
+    \func t[y<sx]->y=x||t[y<x] {x y : Nat} (t[y<sx] : T (y < suc x)) : (y = x) || T (y < x) \elim x, y, t[y<sx]
+      | 0, 0, unit => inl idp
+      | 0, suc y, t[y<sx] => t[n<0]-elim t[y<sx]
+      | suc x, 0, unit => inr unit
+      | suc x, suc y, t[y<sx] => \case t[y<sx]->y=x||t[y<x] t[y<sx] \with {
+        | inl y=x => inl (pmap suc y=x)
+        | inr t[y<x] => inr t[y<x]
+      }
+  }
+
+\func Nat-ind (E : Nat -> \Type)
+              (r : \Pi (n : Nat) -> (\Pi (k : Nat) -> T (k < n) -> E k) -> E n)
+              (n : Nat) : E n =>
+  wf-ind E r n (wf-t< n)
 
 -- 2. Define 'div' via 'Nat-ind'.
 
-\func div (n k : Nat) (p : T (0 < k)) : Nat => {?}
+\import Basics (-)
+
+\func div (n k : Nat) (p : T (0 < k)) : Nat =>
+  Nat-ind (\lam _ => Nat) (\lam n r' => \case n < k \as b, idp : b = n < k \with {
+    | false, f=n<k => r' (n - k) (helper p f=n<k)
+    | true, _ => 0
+  }) n
+  \where {
+    \func helper {n k : Nat} (t[0<k] : T (0 < k)) (f=n<k : false = n < k) : T (n - k < n)
+      | {0}, {suc k}, unit, ()
+      | {suc n}, {suc k}, unit, f=n<k => helper' n k
+
+    \func helper' (n k : Nat) : T (n - k < suc n) -- T (suc n - suc k < suc n)
+      | 0, _ => unit
+      | suc n, 0 => t[n<sn] n -- transport (\lam n-0|n => T (n-0|n < suc n)) (-z n) (helper' n 0)
+      | suc n, suc k => t<-helper (helper' n k)
+
+    \func t[n<sn] (n : Nat) : T (n < suc n)
+      | 0 => unit
+      | suc n => t[n<sn] n
+
+    \func t<-helper {x y : Nat} (p : T (x < y)) : T (x < suc y)
+      | {0}, {suc y}, unit => unit
+      | {suc x}, {suc y}, p => t<-helper p
+  }
 
 -- 3. Prove the following induction principle for lists:
 
@@ -21,11 +101,20 @@
   | nil => 0
   | cons _ xs => suc (length xs)
 
+{-
+\func t[l<l] {A : \Type} (xs ys : List A) => T (length xs < length ys)
+
+\func wf-t[l<l] {A : \Type} (xs : List A) : Acc t[l<l] xs => {?}
+-}
+
 \func List-ind
   {A : \Type}
   (E : List A -> \Type)
   (r : \Pi (xs : List A) -> (\Pi (ys : List A) -> T (length ys < length xs) -> E ys) -> E xs)
-  (xs : List A) : E xs => {?}
+  (xs : List A) : E xs =>
+  Nat-ind (\lam n => \Pi (xs : List A) (p : length xs = n) -> E xs)
+      (\lam n r' xs p => r xs (\lam ys t => r' (length ys) (transport (\lam lxs|n => T (length ys < lxs|n)) p t) ys idp))
+      (length xs) xs idp
 
 -- 4. Implement function 'filter' and prove that it is correct, that is that the following holds:
 --    * 'filter p xs' is a sublist of 'xs'

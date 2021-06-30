@@ -156,15 +156,12 @@
       | quot-rem q r t p => \case \elim r, t, p \with {
         | 0, unit, p => yes (q, p *> *-comm q 2)
         | 1, unit, p => no (\lam ie-n => no-helper (inv (p *> pmap (\lam q*2|2*q => q*2|2*q + 1) (*-comm q 2)) *> ie-n.2))
-        | suc (suc r), t, _ => \case r < 0 \as b, n<0=f r : b = false, t : T b \with {
-          | false, _, ()
-        }
+        | suc (suc r), t, _ => t[n<0]-elim t
       }
     }
   \where {
-    \func n<0=f (n : Nat) : n < 0 = false
-      | 0 => idp
-      | suc n => idp
+    \func t[n<0]-elim {A : \Type} {n : Nat} (t : T (n < 0)) : A \elim n, t
+      | 0, ()
 
     {- more complicated
         \func no-helper' {q k : Nat} (p : q * 2 + 1 = k * 2) : Empty \elim q, k, p
