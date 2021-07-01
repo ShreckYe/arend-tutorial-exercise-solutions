@@ -170,7 +170,7 @@
       })
       \with {
         | false, _ => spec-2 p xs
-        | true, p => cons-all (transport T p unit) (spec-2 p xs)
+        | true, t=px => cons-all (transport T t=px unit) (spec-2 p xs)
       }
 
     \func spec-3 {A : \Type} (p : A -> Bool) (xs : List A)
