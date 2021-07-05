@@ -57,12 +57,12 @@
   | return {A : \Type} A : F A
   | monad-left-id {A B : \Type} (a : A) (f : A -> F B) : (return a >>= f) = f a
   | monad-right-id {A : \Type} (m : F A) : (m >>= return) = m
-  | monad-assoc {A B C : \Type} (m : F A) (f : A -> F B) (g : B -> F C) : (m >>= f >>= g) = (m >>= (\lam x => f x >>= g))
+  | monad-assoc {A B C : \Type} (ma : F A) (f : A -> F B) (g : B -> F C) : (ma >>= f >>= g) = (ma >>= (\lam x => f x >>= g))
 
 \data Maybe (A : \Type) | nothing | just A
 
 \instance MaybeMonad : Monad Maybe
-  | fmap {A B : \Type} (f : A -> B) : (Maybe A) -> Maybe B => \lam ma => \case ma \with {
+  | fmap {A B : \Type} (f : A -> B) (ma : Maybe A) : Maybe B \elim ma {
     | nothing => nothing
     | just a => just (f a)
   }
@@ -74,23 +74,20 @@
     | nothing => idp
     | just a => idp
   }
-  | >>= {A B : \Type} (ma : Maybe A) (f : A -> Maybe B) : Maybe B => \case ma \with {
+  | >>= {A B : \Type} (ma : Maybe A) (f : A -> Maybe B) : Maybe B \elim ma {
     | nothing => nothing
-    | just a => \case f a \with {
-      | nothing => nothing
-      | just b => just b
-    }
+    | just a => f a
   }
   | return : \Pi {A : \Type} A -> Maybe A => just
-  | monad-left-id => {?}
-{-
-  | monad-left-id {A B : \Type} (a : A) (f : A -> Maybe B) : (return a >>= f) = f a => \case f a \with {
+  | monad-left-id a f => idp
+  | monad-right-id {A : \Type} (m : Maybe A) : (m >>= return) = m \with {
     | nothing => idp
-    | just a1 => idp
+    | just _ => idp
   }
--}
-  | monad-right-id => {?}
-  | monad-assoc => {?}
+  | monad-assoc {A B C : \Type} (ma : Maybe A) (f : A -> Maybe B) (g : B -> Maybe C) : (ma >>= f >>= g) = (ma >>= (\lam a => f a >>= g)) \elim ma {
+    | nothing => idp
+    | just a => idp
+  }
 
 -- 6. Define instances for the class of monads for 'State' and 'State''.
 
@@ -104,17 +101,20 @@
   | fmap-id y => idp
   | fmap-comp f g y => idp
   | >>= (sa : State S A) f => \new State {
-    | state s => \let | (s', a) => sa.state s
-                      | sb : State S B => f a
-                 \in sb.state s'
+    | state s =>
+      \let | (s', a) => sa.state s
+           | sb : State S B => f a
+      \in sb.state s'
   }
   | return a => \new State { | state s => (s, a) }
-  | monad-left-id => {?}
-  | monad-right-id => {?}
-  | monad-assoc => {?}
+  | monad-left-id a f => idp
+  | monad-right-id m => idp
+  | monad-assoc ma f g => idp
 
 \data State' (S A : \Type)
   | state' (S -> \Sigma S A)
+
+\import Equality (funExt, pmap)
 
 \instance State'Monad (S : \Type) : Monad (State' S)
   | fmap {A} {B} f (sa : State' S A) : State' S B \elim sa {
@@ -127,16 +127,69 @@
     | state' sf => idp
   }
   | >>= {A} {B} (sa : State' S A) (f : A -> State' S B) : State' S B \elim sa {
-    | state' sfa => state' (
-      \lam s =>
-          \let | (s', a) => sfa s
-               | sb => f a
-          \in \case f a \with {
-            | state' sfb => sfb s'
-          }
+    | state' sfa => state' (\lam s =>
+        \let (s', a) => sfa s
+        \in \case f a \with {
+          | state' sfb => sfb s'
+        }
     )
   }
-  | return a => state' (\lam s => (s, a))
-  | monad-left-id => {?}
-  | monad-right-id => {?}
-  | monad-assoc => {?}
+  | return {A : \Type} (a : A) : State' S A => state' (\lam s => (s, a))
+  | monad-left-id a f =>
+    \case f a \as sb \return
+    state' (\lam s =>
+        \case sb \with {
+          | state' sfb => sfb s
+        }) = sb
+    \with {
+      | state' sfb => idp
+    }
+  | monad-right-id s =>
+    \case \elim s \with {
+      | state' sf => idp
+    }
+  | monad-assoc {A B C : \Type} (sa : State' S A) (f : A -> State' S B) (g : B -> State' S C) : (sa >>= f >>= g) = (sa >>= (\lam x => f x >>= g)) \elim sa {
+    | state' sfa => pmap state' (funExt (\lam _ => \Sigma S C) (\lam s =>
+        \let (s', a) => sfa s
+        \in \case f a \as sb \return
+        (\let (s'', b) =>
+          \case sb \return \Sigma S B \with {
+            | state' sfb => sfb s'
+          }
+         \in \case g b \with {
+            | state' sfc => sfc s''
+          }) =
+        (\case sb >>= g \return \Sigma S C \with {
+          | state' sfbc => sfbc s'
+        })
+        \with {
+          | state' sfb =>
+            \let (s'', b) => sfb s'
+            \in \case g b \as sc \return
+            (\case sc \with {
+              | state' sfc => sfc s''
+            }) =
+            (\case sc \with {
+              | state' sfb => sfb s''
+            })
+            \with {
+              | state' sfc => idp
+            }
+        }))
+  }
+
+{-
+  | >>= {A} {B} (sa : State' S A) (f : A -> State' S B) : State' S B => state' (get-f sa >>=-helper (\lam a => get-f (f a)))
+  \where {
+    \func get-f {S A : \Type} (sa : State' S A) : S -> \Sigma S A
+      | state' sfa => sfa
+
+    \func \infixl 1 >>=-helper {S A B : \Type} (sfa : S -> \Sigma S A) (f : A -> S -> \Sigma S B) : S -> \Sigma S B =>
+      \lam s =>
+          \let (s', a) => sfa s
+          \in f a s'
+
+    \func monad-assoc-helper {S A B C : \Type} (sfa : S -> \Sigma S A) (f : A -> S -> \Sigma S B) (g : B -> S -> \Sigma S C) : (sfa >>=-helper f >>=-helper g) = (sfa >>=-helper (\lam x => f x >>=-helper g)) =>
+      idp
+  }
+-}
