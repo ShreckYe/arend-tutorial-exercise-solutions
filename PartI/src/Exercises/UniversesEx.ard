@@ -12,6 +12,15 @@
 \func idTest4 : \Type (\suc \lp) => id'' (Functor Maybe)
 \func idTest5 (f : \Pi {A B : \Set} -> (A -> B) -> Maybe A -> Maybe B) : \Type \lp => id'' (Functor Maybe f)
 
+\import Equality (funExt, inv, pmap)
+
+\func funExt2 {A1 : \Type} {A2 : \Type} (B : A1 -> A2 -> \Type) {f g : \Pi (a1 : A1) (a2 : A2) -> B a1 a2}
+              (p : \Pi (a1 : A1) (a2 : A2) -> f a1 a2 = g a1 a2) : f = g =>
+  path (\lam i a1 a2 => p a1 a2 @ i)
+
+\func funExt2-dep {A1 : \Type} {A2 : A1 -> \Type} (B : \Pi (a1 : A1) (A2 a1) -> \Type) {f g : \Pi (a1 : A1) (a2 : A2 a1) -> B a1 a2}
+                  (p : \Pi (a1 : A1) (a2 : A2 a1) -> f a1 a2 = g a1 a2) : f = g =>
+  path (\lam i a1 a2 => p a1 a2 @ i)
 
 -- well-founded induction implemented referring to the Agda implementation
 -- see: https://stackoverflow.com/questions/19642921/assisting-agdas-termination-checker
@@ -28,6 +37,25 @@
              (x : A) (acc-x : Acc < x): E x \elim acc-x
   | acc rs => r x (\lam y y<x => wf-ind E r y (rs y y<x))
 
+\func wf-ind-acc-irrelevant
+  {A : \Type} {< : A -> A -> \Type}
+  (E : A -> \Type)
+  (r : \Pi (x : A) -> (\Pi (y : A) -> y `<` x -> E y) -> E x)
+  (x : A) (acc-x-1 acc-x-2 : Acc < x) : wf-ind E r x acc-x-1 = wf-ind E r x acc-x-2 \elim acc-x-1, acc-x-2
+  | acc rs-1, acc rs-2 => pmap (r x)
+      (funExt2-dep {A} {\lam y => y `<` x} (\lam y y<x => E y) (\lam y y<x => wf-ind-acc-irrelevant E r y (rs-1 y y<x) (rs-2 y y<x)))
+
+\func acc-unique {A : \Type} {< : A -> A -> \Type} {x : A} (acc-x-1 acc-x-2 : Acc < x) : acc-x-1 = acc-x-2 \elim <, acc-x-1, acc-x-2
+  | <, acc rs-1, acc rs-2 => pmap acc
+      (funExt2-dep {A} {\lam y => y `<` x} (\lam y y<x => Acc < y) (\lam y y<x => acc-unique (rs-1 y y<x) (rs-2 y y<x)))
+
+\func wf-ind-acc-irrelevant'
+  {A : \Type} {< : A -> A -> \Type}
+  (E : A -> \Type)
+  (r : \Pi (x : A) -> (\Pi (y : A) -> y `<` x -> E y) -> E x)
+  (x : A) (acc-x-1 acc-x-2 : Acc < x) : wf-ind E r x acc-x-1 = wf-ind E r x acc-x-2 =>
+  pmap (wf-ind E r x) (acc-unique acc-x-1 acc-x-2)
+
 -- end of well-founded induction base definitions
 
 \func t< => \lam x y => T (x < y)
@@ -37,7 +65,6 @@
 \func transport {A : \Type} (B : A -> \Type) {a a' : A} (p : a = a') (b : B a) : B a' =>
   coe (\lam i => B (p @ i)) b right
 
-\import Equality (inv, pmap)
 \import Proofs (inl, inr, ||)
 
 \func wf-t< (x : Nat) : Acc t< x
@@ -66,6 +93,11 @@
               (r : \Pi (n : Nat) -> (\Pi (k : Nat) -> T (k < n) -> E k) -> E n)
               (n : Nat) : E n =>
   wf-ind E r n (wf-t< n)
+  \where
+    \func with-acc (E : Nat -> \Type)
+                   (r : \Pi (n : Nat) -> (\Pi (k : Nat) -> T (k < n) -> E k) -> E n)
+                   (n : Nat) (acc-n : Acc t< n) : E n =>
+      wf-ind E r n acc-n
 
 -- 2. Define 'div' via 'Nat-ind'.
 
@@ -105,7 +137,11 @@
 \func \infix 0 t[l<l] {A : \Type} (xs ys : List A) => T (length xs < length ys)
 
 {-
-\func wf-t[l<l] {A : \Type} (xs : List A) : Acc t[l<l] xs => {?}
+\func wf-t[l<l] {A : \Type} (xs : List A) : Acc (t[l<l]) xs =>
+  acc-lxs->acc-xs (wf-t< (length xs))
+  \where
+    \func acc-lxs->acc-xs {A : \Type} {xs : List A} (acc-lxs : Acc t< (length xs)) : Acc (t[l<l]) xs
+      | acc rs => acc (\lam ys t[lys<lxs] => acc-lxs->acc-xs (rs (length ys) t[lys<lxs]))
 -}
 
 \func List-ind
@@ -116,6 +152,15 @@
   Nat-ind (\lam n => \Pi (xs : List A) (p : length xs = n) -> E xs)
       (\lam n f xs p => r xs (\lam ys t => f (length ys) (transport (\lam lxs|n => T (length ys < lxs|n)) p t) ys idp))
       (length xs) xs idp
+  \where
+    \func with-acc
+      {A : \Type}
+      (E : List A -> \Type)
+      (r : \Pi (xs : List A) -> (\Pi (ys : List A) -> T (length ys < length xs) -> E ys) -> E xs)
+      (xs : List A) (acc-lxs : Acc t< (length xs)): E xs =>
+      Nat-ind.with-acc (\lam n => \Pi (xs : List A) (p : length xs = n) -> E xs)
+          (\lam n f xs p => r xs (\lam ys t => f (length ys) (transport (\lam lxs|n => T (length ys < lxs|n)) p t) ys idp))
+          (length xs) acc-lxs xs idp
 
 -- 4. Implement function 'filter' and prove that it is correct, that is that the following holds:
 --    * 'filter p xs' is a sublist of 'xs'
@@ -206,16 +251,18 @@
 \import sort (Either, Preorder, TotalPreorder, totality)
 
 \func merge-sort {A : TotalPreorder} (xs : List A) : List A =>
-  List-ind (\lam _ => List A)
-      (\lam xs f => \case \elim xs, \elim f \with {
-        | nil, _ => nil
-        | cons x nil, _ => cons x nil
-        | cons x (cons x' xs), f =>
-          \let (xs1, lxs1<, xs2, lxs2<) => divide x x' xs
-          \in merge (f xs1 lxs1<) (f xs2 lxs2<)
-      })
-      xs
+  List-ind (\lam _ => List A) r xs
   \where {
+    \func with-acc {A : TotalPreorder} (xs : List A) (acc-lxs : Acc t< (length xs)) : List A =>
+      List-ind.with-acc (\lam _ => List A) r xs acc-lxs
+
+    \func r {A : TotalPreorder} (xs : List A) (f : \Pi (ys : List A) -> T (length ys < length xs) -> List A) : List A \elim xs
+      | nil => nil
+      | cons x nil => cons x nil
+      | cons x (cons x' xs) =>
+        \let (xs1, lxs1<, xs2, lxs2<) => divide x x' xs
+        \in merge (f xs1 lxs1<) (f xs2 lxs2<)
+
     \func divide {A : \Type} (x x' : A) (xs : List A) :
       \let cxcx'xs => cons x (cons x' xs) \in
         \Sigma (xs1 : List A) (xs1 t[l<l] cxcx'xs) (xs2 : List A) (xs2 t[l<l] cxcx'xs) =>
@@ -285,35 +332,37 @@
   | nil => perm-nil
   | cons a l => perm-cons idp perm-refl
 
+\func perm-= {A : \Type} {xs ys : List A} (p : xs = ys) : Perm xs ys =>
+  transport (\lam xs|ys => Perm xs xs|ys) p perm-refl
+
 \func merge-sort-perm {A : TotalPreorder} (xs : List A) : Perm xs (merge-sort xs) =>
-  List-ind (\lam xs => Perm xs (merge-sort xs))
-      (\lam xs f => \case \elim xs, \elim f \with {
-        | nil, _ => perm-refl
-        | cons x nil, _ => perm-refl
-        | cons x (cons x' xs), f =>
-          \let
-            | cxcx'xs => (cons x (cons x' xs))
-
-            | (xs1, lxs1<, xs2, lxs2<) => divide x x' xs
-            | cxcx'xs=xs1++xs2 => helper-divide x x' xs
-
-            | sxs1 => merge-sort xs1
-            | sxs2 => merge-sort xs2
-            | perm-xs1-sxs1 => f xs1 lxs1<
-            | perm-xs2-sxs2 => f xs2 lxs2<
-
-            | perm-sxs++sys-merge-sxs-sys => helper-merge sxs1 sxs2
-          \in \let perm-1 : Perm cxcx'xs (xs1 ++ xs2) => transport (\lam cxcx'xs|xs1++xs2 => Perm cxcx'xs cxcx'xs|xs1++xs2) cxcx'xs=xs1++xs2 perm-refl
-                   | perm-2 : Perm (xs1 ++ xs2) (sxs1 ++ sxs2) => helper-++ perm-xs1-sxs1 perm-xs2-sxs2
-                   | perm-3 : Perm (sxs1 ++ sxs2) (merge sxs1 sxs2) => perm-sxs++sys-merge-sxs-sys
-                   | perm : Perm cxcx'xs (merge sxs1 sxs2) => perm-1 `perm-trans`
-                   perm-2 `perm-trans`
-                   perm-3
-                   | =-test : merge sxs1 sxs2 = merge-sort cxcx'xs => idp
-              \in transport (\lam temp => Perm cxcx'xs temp) {merge sxs1 sxs2} {merge-sort cxcx'xs} =-test perm
-      })
-      xs
+  with-acc xs (wf-t< (length xs))
   \where {
+    \func with-acc {A : TotalPreorder} (xs : List A) (acc-lxs : Acc t< (length xs)) : Perm xs (merge-sort.with-acc xs acc-lxs) =>
+      List-ind (\lam xs => \Pi (acc-lxs : Acc t< (length xs)) -> Perm xs (merge-sort.with-acc xs acc-lxs))
+          (\lam xs f acc-lxs => \case \elim xs, \elim f, \elim acc-lxs \with {
+            | nil, _, acc _ => perm-refl
+            | cons x nil, _, acc _ => perm-refl
+            | cons x (cons x' xs), f, acc rs =>
+              \let
+                | (xs1, lxs1<, xs2, lxs2<) => divide x x' xs
+                | cxcx'xs=xs1++xs2 => helper-divide x x' xs
+                | perm-cxcx'xs-xs1++xs2 => perm-= cxcx'xs=xs1++xs2
+
+                | acc-lxs1 => rs (length xs1) lxs1<
+                | acc-lxs2 => rs (length xs2) lxs2<
+                | sxs1 => merge-sort.with-acc xs1 acc-lxs1
+                | sxs2 => merge-sort.with-acc xs2 acc-lxs2
+                | perm-xs1-sxs1  => f xs1 lxs1< acc-lxs1
+                | perm-xs2-sxs2 => f xs2 lxs2< acc-lxs2
+                | perm-xs1++xs2-sxs1++sxs2 => helper-++ perm-xs1-sxs1 perm-xs2-sxs2
+
+                | perm-sxs1++sxs2-merge-sxs1-sxs2 => helper-merge sxs1 sxs2
+              \in
+                perm-cxcx'xs-xs1++xs2 `perm-trans` perm-xs1++xs2-sxs1++sxs2 `perm-trans` perm-sxs1++sxs2-merge-sxs1-sxs2
+          })
+          xs acc-lxs
+
     \open merge-sort
 
     \func helper-divide {A : \Type} (x x' : A) (xs : List A) :
@@ -392,29 +441,19 @@
   | cons x xs => cons-sorted (x <= head x xs) (IsSorted xs)
 
 \func merge-sort-sorted {A : TotalPreorder} (xs : List A) : IsSorted (merge-sort xs) =>
-  List-ind (\lam xs => IsSorted (merge-sort xs))
-      (\lam xs f => \case \elim xs, \elim f \with {
-        | nil, _ => nil-sorted
-        | cons x nil, _ => cons-sorted (x<=x x) nil-sorted
-        | cons x (cons x' xs), f =>
-          {-
-          \let (xs1, lxs1<, xs2, lxs2<) => divide x x' xs
-          \in helper-merge (f xs1 lxs1<) (f xs2 lxs2<)
-          -}
-          \let | (xs1, lxs1<, xs2, lxs2<) => divide x x' xs
-
-               | sxs1 => merge-sort xs1
-               | sxs2 => merge-sort xs2
-               | is-sxs1 : IsSorted (merge-sort xs1) => f xs1 lxs1<
-               | is-sxs2 : IsSorted (merge-sort xs2) => f xs2 lxs2<
-
-               | is-sxs : IsSorted (merge sxs1 sxs2) => helper-merge is-sxs1 is-sxs2
-
-               | =-test : merge sxs1 sxs2 = merge-sort (cons x (cons x' xs)) => idp
-          \in is-sxs
-      })
-      xs
+  with-acc xs (wf-t< (length xs))
   \where {
+    \func with-acc {A : TotalPreorder} (xs : List A) (acc-lxs : Acc t< (length xs)) : IsSorted (merge-sort.with-acc xs acc-lxs) =>
+      List-ind (\lam xs => \Pi (acc-lxs : Acc t< (length xs)) -> IsSorted (merge-sort.with-acc xs acc-lxs))
+          (\lam xs f acc-lxs => \case \elim xs, \elim f, \elim acc-lxs \with {
+            | nil, _, acc _ => nil-sorted
+            | cons x nil, _, acc _ => cons-sorted (x<=x x) nil-sorted
+            | cons x (cons x' xs), f, acc rs =>
+              \let (xs1, lxs1<, xs2, lxs2<) => divide x x' xs
+              \in helper-merge (f xs1 lxs1< (rs (length xs1) lxs1<)) (f xs2 lxs2< (rs (length xs2) lxs2<))
+          })
+          xs acc-lxs
+
     \open merge-sort
     \open Either
 
